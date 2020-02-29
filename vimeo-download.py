@@ -10,8 +10,10 @@ import subprocess as sp
 import os
 import distutils.core
 import argparse
-import urlparse
+from urllib.parse import urlparse
+from urllib.parse import urljoin
 import datetime
+import shutil
 
 import random
 import string
@@ -53,7 +55,7 @@ def download_video(base_url, content):
     heights = [(i, d['height']) for (i, d) in enumerate(content)]
     idx, _ = max(heights, key=lambda t: t[1])
     video = content[idx]
-    video_base_url = urlparse.urljoin(base_url, video['base_url'])
+    video_base_url = urljoin(base_url, video['base_url'])
     print('video base url:', video_base_url)
 
     # Create INSTANCE_TEMP if it doesn't exist
@@ -91,7 +93,7 @@ def download_audio(base_url, content):
     """Downloads the video portion of the content into the INSTANCE_TEMP folder"""
     result = True
     audio = content[0]
-    audio_base_url = urlparse.urljoin(base_url, audio['base_url'])
+    audio_base_url = urljoin(base_url, audio['base_url'])
     print('audio base url:', audio_base_url)
 
 
@@ -152,6 +154,8 @@ if __name__ == "__main__":
                         metavar="TIMESTAMP")
     parser.add_argument("--skip-merge", action="store_true",
                         help="downloads only and doesn't merge")
+    parser.add_argument("--audio-only", action="store_true",
+                        help="downloads audio only ")
     args = parser.parse_args()
 
     # Set output filename depending on defaults
@@ -172,11 +176,14 @@ if __name__ == "__main__":
             print('HTTP error (' + str(resp.status_code) + '): ' + title)
             quit(0)
         content = resp.json()
-        base_url = urlparse.urljoin(master_json_url, content['base_url'])
+        base_url = urljoin(master_json_url, content['base_url'])
 
-        # Download the components of the stream
-        if not download_video(base_url, content['video']) or not download_audio(base_url, content['audio']):
-            quit()
+        if not args.audio_only:
+            # Download the components of the stream
+            if not download_video(base_url, content['video']) or not download_audio(base_url, content['audio']):
+                quit()
+        else:
+            download_audio(base_url, content['audio'])
 
     # Overwrite timestamp if skipping download
     if args.skip_download:
@@ -184,6 +191,11 @@ if __name__ == "__main__":
         print("Overriding timestamp with:", TIMESTAMP)
 
     # Combine audio and video
-    if not args.skip_merge:
+    if not args.skip_merge or args.audio_only:
         merge_audio_video(output_filename)
+
+    if args.audio_only:
+        audio_filename = os.path.join(TEMP_DIR, OUT_PREFIX, "a.mp3")
+        output_filename = os.path.join(OUTPUT_DIR, args.output + '.mp3')
+        shutil.move(audio_filename, output_filename)
 
